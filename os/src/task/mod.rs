@@ -54,6 +54,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_times: [0; 500],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -168,4 +169,24 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Increase the syscall count for the current task
+pub fn update_syscall_times(syscall_id: usize) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    if syscall_id < 500 {
+        inner.tasks[current].syscall_times[syscall_id] += 1;
+    }
+}
+
+/// Get the syscall count for a specific syscall_id of current task
+pub fn get_syscall_times(syscall_id: usize) -> u32 {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    if syscall_id < 500 {
+        inner.tasks[current].syscall_times[syscall_id]
+    } else {
+        0
+    }
 }
