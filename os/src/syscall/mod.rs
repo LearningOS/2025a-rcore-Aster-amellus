@@ -31,6 +31,21 @@ mod process;
 use fs::*;
 use process::*;
 
+/// Convert syscall ID to human-readable name
+pub fn syscall_id_to_name(syscall_id: usize) -> &'static str {
+    match syscall_id {
+        SYSCALL_WRITE => "sys_write",
+        SYSCALL_EXIT => "sys_exit",
+        SYSCALL_YIELD => "sys_yield",
+        SYSCALL_GET_TIME => "sys_get_time",
+        SYSCALL_SBRK => "sys_sbrk",
+        SYSCALL_MUNMAP => "sys_munmap",
+        SYSCALL_MMAP => "sys_mmap",
+        SYSCALL_TRACE => "sys_trace",
+        _ => "unknown",
+    }
+}
+
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
     match syscall_id {

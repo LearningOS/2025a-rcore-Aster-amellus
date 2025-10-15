@@ -1,5 +1,6 @@
 //! Process management syscalls
 use crate::mm::translated_byte_buffer;
+use crate::syscall::syscall_id_to_name;
 use crate::task::{change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next};
 use crate::timer::get_time_us;
 
@@ -53,7 +54,7 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
         )
     };
     
-    // 逐字节复制到用户空间（处理可能的跨页情况）
+
     let mut offset = 0;
     for buffer in buffers {
         let len = buffer.len();
@@ -66,9 +67,62 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
-pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
-    trace!("kernel: sys_trace");
-    -1
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
+    trace!("kernel: sys_trace request={} id={} data={}", trace_request, id, data);
+    
+    match trace_request {
+        // Read a byte from user memory at address `id`
+        0 => {
+            // Get current task's page table token
+            let token = current_user_token();
+            
+            // Translate virtual address to physical address buffer
+            let buffers = translated_byte_buffer(
+                token,
+                id as *const u8,
+                1  // Read 1 byte
+            );
+            
+            // Read the byte value
+            if let Some(buffer) = buffers.first() {
+                buffer[0] as isize
+            } else {
+                -1  // Translation failed
+            }
+        }
+        
+        // Write a byte to user memory at address `id`
+        1 => {
+            // Get current task's page table token
+            let token = current_user_token();
+            
+            // Translate virtual address to physical address buffer
+            let mut buffers = translated_byte_buffer(
+                token,
+                id as *const u8,
+                1  // Write 1 byte
+            );
+            
+            // Write the byte value (only lowest 8 bits)
+            if let Some(buffer) = buffers.first_mut() {
+                buffer[0] = (data & 0xFF) as u8;
+                0  // Success
+            } else {
+                -1  // Translation failed
+            }
+        }
+        
+        // Query the number of times syscall `id` has been called
+        2 => {
+            // This would require syscall counter in TaskControlBlock
+            // For now, just print the syscall name and return -1
+            println!("[kernel] Query syscall: {} ({})", syscall_id_to_name(id), id);
+            -1  // Not implemented yet (need to add syscall counter to TCB)
+        }
+        
+        // Invalid trace_request
+        _ => -1,
+    }
 }
 
 // YOUR JOB: Implement mmap.
