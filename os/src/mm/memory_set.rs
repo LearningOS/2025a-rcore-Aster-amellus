@@ -262,6 +262,152 @@ impl MemorySet {
             false
         }
     }
+
+    /// Map a new memory area (used by sys_mmap)
+    /// Returns true if successful, false otherwise
+    pub fn mmap(&mut self, start: usize, len: usize, permission: MapPermission) -> bool {
+        // Step 1: Validate parameters
+        
+        // Length should not be zero
+        if len == 0 {
+            warn!("mmap: length is zero");
+            return false;
+        }
+        
+        // Start address must be page-aligned
+        let start_va: VirtAddr = start.into();
+        if !start_va.aligned() {
+            warn!("mmap: start address {:#x} is not page-aligned", start);
+            return false;
+        }
+        
+        // Length is automatically rounded up to page boundary
+        // This is standard mmap behavior
+        let aligned_len = (len + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+        
+        // Permission validation: must have at least one of R/W/X, and must have U flag
+        if !permission.contains(MapPermission::U) {
+            warn!("mmap: permission does not have U flag");
+            return false;
+        }
+        
+        let has_r = permission.contains(MapPermission::R);
+        let has_w = permission.contains(MapPermission::W);
+        let has_x = permission.contains(MapPermission::X);
+        
+        // Must have at least one permission
+        if !has_r && !has_w && !has_x {
+            warn!("mmap: no valid permission specified");
+            return false;
+        }
+        
+        // Note: W=1, R=0 is reserved in RISC-V, but we allow it at mmap time.
+        // The hardware will handle the actual permission check and raise exceptions.
+        
+        // Step 2: Calculate virtual page range
+        let end_va: VirtAddr = (start + aligned_len).into();
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        
+        // Step 3: Check if the address range overlaps with existing areas
+        for area in &self.areas {
+            // Check if [start_vpn, end_vpn) overlaps with existing area
+            let area_start = area.vpn_range.get_start();
+            let area_end = area.vpn_range.get_end();
+            
+            // Two ranges [a1, a2) and [b1, b2) overlap if: a1 < b2 && b1 < a2
+            if start_vpn < area_end && area_start < end_vpn {
+                warn!(
+                    "mmap: address range [{:#x}, {:#x}) overlaps with existing area [{:#x}, {:#x})",
+                    start_vpn.0, end_vpn.0, area_start.0, area_end.0
+                );
+                return false;
+            }
+        }
+        
+        // Step 4: Create a new MapArea and add it to self.areas
+        // Use MapType::Framed for user memory (each page gets its own physical frame)
+        self.push(
+            MapArea::new(start_va, end_va, MapType::Framed, permission),
+            None,
+        );
+        
+        info!(
+            "mmap: successfully mapped [{:#x}, {:#x}) with permission {:?}",
+            start, start + aligned_len, permission
+        );
+        
+        true
+    }
+
+    /// Unmap a memory area (used by sys_munmap)
+    /// Returns true if successful, false otherwise
+    pub fn munmap(&mut self, start: usize, len: usize) -> bool {
+        // Step 1: Validate parameters
+        
+        // Length should not be zero
+        if len == 0 {
+            warn!("munmap: length is zero");
+            return false;
+        }
+        
+        // Start address must be page-aligned
+        let start_va: VirtAddr = start.into();
+        if !start_va.aligned() {
+            warn!("munmap: start address {:#x} is not page-aligned", start);
+            return false;
+        }
+        
+        // Length is automatically rounded up to page boundary
+        // This is standard munmap behavior
+        let aligned_len = (len + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+        
+        let end_va: VirtAddr = (start + aligned_len).into();
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        
+        // Step 2: Find the MapArea that exactly matches this range
+        // We need to find the index to remove it later
+        let mut area_index = None;
+        
+        for (idx, area) in self.areas.iter().enumerate() {
+            let area_start = area.vpn_range.get_start();
+            let area_end = area.vpn_range.get_end();
+            
+            // Check if this area exactly matches the range to unmap
+            if area_start == start_vpn && area_end == end_vpn {
+                area_index = Some(idx);
+                break;
+            }
+        }
+        
+        // Step 3: Unmap the pages and remove the area from self.areas
+        if let Some(idx) = area_index {
+            // Get a mutable reference to unmap
+            let area = &mut self.areas[idx];
+            
+            // Unmap all pages in this area
+            // The unmap function will remove FrameTrackers from data_frames BTreeMap
+            // When FrameTracker is dropped, it automatically deallocates the physical frame
+            area.unmap(&mut self.page_table);
+            
+            // Remove the area from the vector
+            self.areas.remove(idx);
+            
+            info!(
+                "munmap: successfully unmapped [{:#x}, {:#x})",
+                start, start + aligned_len
+            );
+            
+            true
+        } else {
+            warn!(
+                "munmap: no matching area found for range [{:#x}, {:#x})",
+                start, start + aligned_len
+            );
+            false
+        }
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

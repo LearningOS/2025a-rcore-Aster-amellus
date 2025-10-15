@@ -96,6 +96,48 @@ impl TaskControlBlock {
             None
         }
     }
+
+    /// Map a memory area in task's address space (for sys_mmap)
+    pub fn mmap(&mut self, start: usize, len: usize, permission: usize) -> isize {
+        // Convert permission bits to MapPermission
+        // permission bit layout: bit 0=R, bit 1=W, bit 2=X
+        // Valid permission bits: only bits 0-2 are valid
+        
+        // Check for invalid permission bits (bits 3 and above)
+        if permission & !0x7 != 0 {
+            warn!("mmap: invalid permission bits: {:#x}", permission);
+            return -1;
+        }
+        
+        let mut map_perm = MapPermission::U; // User mode accessible
+        
+        if permission & 0x1 != 0 {
+            map_perm |= MapPermission::R;
+        }
+        if permission & 0x2 != 0 {
+            map_perm |= MapPermission::W;
+        }
+        if permission & 0x4 != 0 {
+            map_perm |= MapPermission::X;
+        }
+        
+        // Call memory_set's mmap function
+        if self.memory_set.mmap(start, len, map_perm) {
+            0  // Success
+        } else {
+            -1 // Failure
+        }
+    }
+
+    /// Unmap a memory area in task's address space (for sys_munmap)
+    pub fn munmap(&mut self, start: usize, len: usize) -> isize {
+        // Call memory_set's munmap function
+        if self.memory_set.munmap(start, len) {
+            0  // Success
+        } else {
+            -1 // Failure
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
