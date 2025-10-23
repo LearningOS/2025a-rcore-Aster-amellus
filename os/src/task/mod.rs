@@ -21,6 +21,21 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+/// Minimum user-settable stride scheduling priority.
+pub const MIN_PRIORITY: usize = 2;
+/// Default stride scheduling priority assigned to new processes.
+pub const DEFAULT_PRIORITY: usize = 16;
+/// Large stride constant used to derive per-process pass values.
+pub const BIG_STRIDE: usize = 1 << 20;
+
+/// Compute the stride increment (`pass`) for a given priority.
+#[inline]
+pub fn pass_for_priority(priority: usize) -> usize {
+    let capped = core::cmp::max(priority, MIN_PRIORITY);
+    let pass = BIG_STRIDE / capped;
+    if pass == 0 { 1 } else { pass }
+}
+
 use crate::loader::get_app_data_by_name;
 use alloc::sync::Arc;
 use lazy_static::*;

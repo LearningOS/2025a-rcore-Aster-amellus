@@ -1,29 +1,79 @@
 //!Implementation of [`TaskManager`]
 use super::TaskControlBlock;
 use crate::sync::UPSafeCell;
-use alloc::collections::VecDeque;
+use alloc::collections::BinaryHeap;
 use alloc::sync::Arc;
+use core::cmp::Ordering;
 use lazy_static::*;
-///A array of `TaskControlBlock` that is thread-safe
-pub struct TaskManager {
-    ready_queue: VecDeque<Arc<TaskControlBlock>>,
+
+/// Wrapper storing stride metadata for binary heap scheduling.
+struct StrideTask {
+    stride: usize,
+    order: usize,
+    task: Arc<TaskControlBlock>,
 }
 
-/// A simple FIFO scheduler.
+impl PartialEq for StrideTask {
+    fn eq(&self, other: &Self) -> bool {
+        self.stride == other.stride && self.order == other.order
+    }
+}
+
+impl Eq for StrideTask {}
+
+impl PartialOrd for StrideTask {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for StrideTask {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .stride
+            .cmp(&self.stride)
+            .then_with(|| other.order.cmp(&self.order))
+    }
+}
+
+/// Stride-based scheduler maintaining runnable tasks in a min-heap.
+pub struct TaskManager {
+    ready_queue: BinaryHeap<StrideTask>,
+    next_order: usize,
+}
+
 impl TaskManager {
     ///Creat an empty TaskManager
     pub fn new() -> Self {
         Self {
-            ready_queue: VecDeque::new(),
+            ready_queue: BinaryHeap::new(),
+            next_order: 0,
         }
     }
+
     /// Add process back to ready queue
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
-        self.ready_queue.push_back(task);
+        let stride = {
+            let inner = task.inner_exclusive_access();
+            inner.stride
+        };
+        let order = self.next_order;
+        self.next_order = self.next_order.wrapping_add(1);
+        self.ready_queue.push(StrideTask { stride, order, task });
     }
+
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        self.ready_queue.pop().map(|StrideTask { task, .. }| {
+            {
+                let mut inner = task.inner_exclusive_access();
+                inner.stride = inner
+                    .stride
+                    .checked_add(inner.pass)
+                    .unwrap_or(inner.pass);
+            }
+            task
+        })
     }
 }
 

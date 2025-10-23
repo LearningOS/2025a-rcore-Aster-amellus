@@ -72,6 +72,21 @@ impl MemorySet {
             self.areas.remove(idx);
         }
     }
+    /// Check whether the given virtual-page range overlaps with any existing area.
+    pub fn overlaps_with(&self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> bool {
+        self.areas.iter().any(|area| {
+            let area_start = area.vpn_range.get_start();
+            let area_end = area.vpn_range.get_end();
+            start_vpn < area_end && end_vpn > area_start
+        })
+    }
+    /// Return the end VPN of an area starting at `start_vpn`, if it exists.
+    pub fn area_end_vpn(&self, start_vpn: VirtPageNum) -> Option<VirtPageNum> {
+        self.areas
+            .iter()
+            .find(|area| area.vpn_range.get_start() == start_vpn)
+            .map(|area| area.vpn_range.get_end())
+    }
     /// Add a new MapArea into this MemorySet.
     /// Assuming that there are no conflicts in the virtual address
     /// space.

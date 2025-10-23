@@ -1,5 +1,5 @@
 //! Types related to task management & Functions for completely changing TCB
-use super::TaskContext;
+use super::{pass_for_priority, TaskContext, DEFAULT_PRIORITY};
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 use crate::config::TRAP_CONTEXT_BASE;
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
@@ -50,6 +50,15 @@ pub struct TaskControlBlockInner {
     /// Maintain the execution status of the current process
     pub task_status: TaskStatus,
 
+    /// Stride scheduling priority (bounded below by [`MIN_PRIORITY`](super::MIN_PRIORITY)).
+    pub priority: usize,
+
+    /// Accumulated stride used to order runnable tasks.
+    pub stride: usize,
+
+    /// Per-dispatch stride increment derived from [`priority`](Self::priority).
+    pub pass: usize,
+
     /// Application address space
     pub memory_set: MemorySet,
 
@@ -85,6 +94,13 @@ impl TaskControlBlockInner {
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
     }
+
+    /// Update stride scheduling priority and recompute its corresponding pass value.
+    pub fn set_priority(&mut self, priority: usize) {
+        let effective = core::cmp::max(priority, super::MIN_PRIORITY);
+        self.priority = effective;
+        self.pass = super::pass_for_priority(effective);
+    }
 }
 
 impl TaskControlBlock {
@@ -112,6 +128,9 @@ impl TaskControlBlock {
                     base_size: user_sp,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
+                    priority: DEFAULT_PRIORITY,
+                    stride: 0,
+                    pass: pass_for_priority(DEFAULT_PRIORITY),
                     memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -176,6 +195,9 @@ impl TaskControlBlock {
         let pid_handle = pid_alloc();
         let kernel_stack = kstack_alloc();
         let kernel_stack_top = kernel_stack.get_top();
+        let priority = parent_inner.priority;
+        let stride = parent_inner.stride;
+        let pass = parent_inner.pass;
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
@@ -185,6 +207,9 @@ impl TaskControlBlock {
                     base_size: parent_inner.base_size,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
+                    priority,
+                    stride,
+                    pass,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
