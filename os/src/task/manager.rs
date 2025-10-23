@@ -59,7 +59,11 @@ impl TaskManager {
         };
         let order = self.next_order;
         self.next_order = self.next_order.wrapping_add(1);
-        self.ready_queue.push(StrideTask { stride, order, task });
+        self.ready_queue.push(StrideTask {
+            stride,
+            order,
+            task,
+        });
     }
 
     /// Take a process out of the ready queue
@@ -67,10 +71,7 @@ impl TaskManager {
         self.ready_queue.pop().map(|StrideTask { task, .. }| {
             {
                 let mut inner = task.inner_exclusive_access();
-                inner.stride = inner
-                    .stride
-                    .checked_add(inner.pass)
-                    .unwrap_or(inner.pass);
+                inner.stride = inner.stride.checked_add(inner.pass).unwrap_or(inner.pass);
             }
             task
         })

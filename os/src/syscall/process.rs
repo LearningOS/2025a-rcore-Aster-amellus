@@ -70,7 +70,11 @@ pub fn sys_exec(path: *const u8) -> isize {
 /// If there is not a child process whose pid is same as given, return -1.
 /// Else if there is a child process but it is still running, return -2.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
-    trace!("kernel::pid[{}] sys_waitpid [{}]", current_task().unwrap().pid.0, pid);
+    trace!(
+        "kernel::pid[{}] sys_waitpid [{}]",
+        current_task().unwrap().pid.0,
+        pid
+    );
     let task = current_task().unwrap();
     // find a child process
 
@@ -123,7 +127,10 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     let token = current_user_token();
     let mut buffers = translated_byte_buffer(token, _ts as *const u8, size_of::<TimeVal>());
     let src = unsafe {
-        slice::from_raw_parts(&timeval as *const TimeVal as *const u8, size_of::<TimeVal>())
+        slice::from_raw_parts(
+            &timeval as *const TimeVal as *const u8,
+            size_of::<TimeVal>(),
+        )
     };
     let mut offset = 0;
     for chunk in buffers.iter_mut() {
@@ -140,7 +147,10 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     let pid = task.pid.0;
     trace!(
         "kernel:pid[{}] sys_mmap start={:#x} len={} prot={:#x}",
-        pid, _start, _len, _port
+        pid,
+        _start,
+        _len,
+        _port
     );
     const VALID_PROT_MASK: usize = 0x7;
     if _len == 0 {
@@ -180,9 +190,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     if inner.memory_set.overlaps_with(start_vpn, end_vpn) {
         return -1;
     }
-    inner
-        .memory_set
-        .insert_framed_area(start_va, end_va, perm);
+    inner.memory_set.insert_framed_area(start_va, end_va, perm);
     0
 }
 
@@ -192,7 +200,9 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     let pid = task.pid.0;
     trace!(
         "kernel:pid[{}] sys_munmap start={:#x} len={}",
-        pid, _start, _len
+        pid,
+        _start,
+        _len
     );
     if _len == 0 {
         return -1;
@@ -217,9 +227,7 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     let mut inner = task.inner_exclusive_access();
     match inner.memory_set.area_end_vpn(start_vpn) {
         Some(existing_end) if existing_end == end_vpn => {
-            inner
-                .memory_set
-                .remove_area_with_start_vpn(start_vpn);
+            inner.memory_set.remove_area_with_start_vpn(start_vpn);
             0
         }
         _ => -1,

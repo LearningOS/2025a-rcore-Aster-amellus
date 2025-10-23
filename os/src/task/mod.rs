@@ -33,7 +33,11 @@ pub const BIG_STRIDE: usize = 1 << 20;
 pub fn pass_for_priority(priority: usize) -> usize {
     let capped = core::cmp::max(priority, MIN_PRIORITY);
     let pass = BIG_STRIDE / capped;
-    if pass == 0 { 1 } else { pass }
+    if pass == 0 {
+        1
+    } else {
+        pass
+    }
 }
 
 use crate::loader::get_app_data_by_name;

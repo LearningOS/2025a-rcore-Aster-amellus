@@ -1,6 +1,6 @@
 //! Types related to task management & Functions for completely changing TCB
-use super::{pass_for_priority, TaskContext, DEFAULT_PRIORITY};
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
+use super::{pass_for_priority, TaskContext, DEFAULT_PRIORITY};
 use crate::config::TRAP_CONTEXT_BASE;
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
