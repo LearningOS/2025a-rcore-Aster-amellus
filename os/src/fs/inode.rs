@@ -6,6 +6,7 @@
 //! need to wrap `OSInodeInner` into `UPSafeCell`
 use super::File;
 use crate::drivers::BLOCK_DEVICE;
+use crate::fs::{Stat, StatMode};
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
 use alloc::sync::Arc;
@@ -52,6 +53,26 @@ impl OSInode {
             v.extend_from_slice(&buffer[..len]);
         }
         v
+    }
+    /// Get file stat
+    pub fn stat_inner(&self) -> Stat {
+        let inner = self.inner.exclusive_access();
+        let inode = &inner.inode;
+        let ino = inode.inode_id() as u64;
+        let mode = if inode.is_dir() {
+            StatMode::DIR
+        } else {
+            StatMode::FILE
+        };
+        // count hard links by scanning root directory
+        let nlink = super::inode::ROOT_INODE.count_links_to(ino as u32);
+        Stat {
+            dev: 0,
+            ino,
+            mode,
+            nlink,
+            pad: [0; 7],
+        }
     }
 }
 
@@ -125,6 +146,37 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     }
 }
 
+/// Create a hard link at new_name pointing to existing file old_name.
+/// Returns 0 on success, -1 on error.
+pub fn link_at(old_name: &str, new_name: &str) -> isize {
+    if old_name == new_name {
+        return -1;
+    }
+    if let Some(inode_id) = ROOT_INODE.find_inode_id_by_name(old_name) {
+        // For simplicity, we do not check whether new_name exists as per lab instruction
+        ROOT_INODE.append_dirent(new_name, inode_id);
+        0
+    } else {
+        -1
+    }
+}
+
+/// Unlink a name from the directory. If it is the last link, deallocate the inode and its data.
+/// Returns 0 on success, -1 if name not found.
+pub fn unlink_at(name: &str) -> isize {
+    if let Some(inode_id) = ROOT_INODE.remove_dirent_rebuild(name) {
+        let remain = ROOT_INODE.count_links_to(inode_id);
+        if remain == 0 {
+            let inode = ROOT_INODE.open_id(inode_id);
+            inode.clear();
+            ROOT_INODE.dealloc_inode_id(inode_id);
+        }
+        0
+    } else {
+        -1
+    }
+}
+
 impl File for OSInode {
     fn readable(&self) -> bool {
         self.readable
@@ -155,5 +207,8 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn stat(&self) -> Option<Stat> {
+        Some(self.stat_inner())
     }
 }
