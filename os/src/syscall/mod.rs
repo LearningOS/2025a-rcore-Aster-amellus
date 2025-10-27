@@ -16,6 +16,8 @@ pub const SYSCALL_OPENAT: usize = 56;
 pub const SYSCALL_CLOSE: usize = 57;
 /// read syscall
 pub const SYSCALL_READ: usize = 63;
+/// enable deadlock detect syscall
+pub const SYSCALL_ENABLE_DEADLOCK_DETECT: usize = 469;
 /// write syscall
 pub const SYSCALL_WRITE: usize = 64;
 /// unlinkat syscall
@@ -88,8 +90,6 @@ pub const SYSCALL_MUTEX_UNLOCK: usize = 466;
 pub const SYSCALL_SEMAPHORE_CREATE: usize = 467;
 /// semaphore_up syscall
 pub const SYSCALL_SEMAPHORE_UP: usize = 468;
-/// enable deadlock detect syscall
-pub const SYSCALL_ENABLE_DEADLOCK_DETECT: usize = 469;
 /// semaphore_down syscall
 pub const SYSCALL_SEMAPHORE_DOWN: usize = 470;
 /// condvar_create syscall
